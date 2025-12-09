@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";   
+import Link from "next/link";
+import { useRouter } from 'next/navigation';
 
 export default function OrdersPage() {
     const [orders, setOrders] = useState([]);
@@ -8,32 +9,36 @@ export default function OrdersPage() {
     const [productCounts, setProductCounts] = useState({});
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchOrders = async () => {
-            try {
-                const res = await fetch('/api/order');
-                const data = await res.json();
-                setOrders(data);
+    const router = useRouter();
 
-                // Fetch product counts for each order
-                const counts = {};
-                for (const order of data) {
-                    try {
-                        const itemRes = await fetch(`/api/order/${order.id}/items`);
-                        const items = await itemRes.json();
-                        counts[order.id] = items.length;
-                    } catch (error) {
-                        console.error(`Error fetching items for order ${order.id}:`, error);
-                        counts[order.id] = 0;
-                    }
+    const fetchOrders = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/order');
+            const data = await res.json();
+            setOrders(data);
+
+            // Fetch product counts for each order
+            const counts = {};
+            for (const order of data) {
+                try {
+                    const itemRes = await fetch(`/api/order/${order.id}/items`);
+                    const items = await itemRes.json();
+                    counts[order.id] = items.length;
+                } catch (error) {
+                    console.error(`Error fetching items for order ${order.id}:`, error);
+                    counts[order.id] = 0;
                 }
-                setProductCounts(counts);
-            } catch (error) {
-                console.error('Error fetching orders:', error);
-            } finally {
-                setLoading(false);
             }
-        };
+            setProductCounts(counts);
+        } catch (error) {
+            console.error('Error fetching orders:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchOrders();
     }, []);
 
@@ -114,6 +119,7 @@ export default function OrdersPage() {
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Description</th>
                                             <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Products</th>
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Created At</th>
+                                            <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
@@ -133,6 +139,33 @@ export default function OrdersPage() {
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-gray-600">
                                                     {new Date(order.createdat).toLocaleDateString()} at {new Date(order.createdat).toLocaleTimeString()}
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <div className="inline-flex gap-2">
+                                                        <button
+                                                            onClick={() => router.push(`/add-order?id=${order.id}`)}
+                                                            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2 px-3 rounded shadow-sm transition-all"
+                                                        >
+                                                            Update
+                                                        </button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!confirm(`Delete order ${order.id}? This cannot be undone.`)) return;
+                                                                try {
+                                                                    const res = await fetch(`/api/order/${order.id}`, { method: 'DELETE' });
+                                                                    if (!res.ok) throw new Error('Delete failed');
+                                                                    // Refresh orders
+                                                                    await fetchOrders();
+                                                                } catch (err) {
+                                                                    console.error('Error deleting order:', err);
+                                                                    alert('Failed to delete order');
+                                                                }
+                                                            }}
+                                                            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2 px-3 rounded shadow-sm transition-all"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
