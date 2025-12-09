@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 export default function AddOrderPage() {
@@ -12,6 +12,9 @@ export default function AddOrderPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const [isUpdate, setIsUpdate] = useState(false);
+    const [orderId, setOrderId] = useState(null);
 
     useEffect(() => {
         const fetchProducts = async () => {
@@ -28,6 +31,38 @@ export default function AddOrderPage() {
         };
         fetchProducts();
     }, []);
+
+    // If an id query param is present, load the order for editing
+    useEffect(() => {
+        const id = searchParams?.get ? searchParams.get('id') : null;
+        if (!id) return;
+
+        const loadOrder = async () => {
+            try {
+                setLoading(true);
+                const res = await fetch(`/api/order/${id}`);
+                if (!res.ok) throw new Error('Order not found');
+                const order = await res.json();
+                setDescription(order.orderdescription || '');
+                setIsUpdate(true);
+                setOrderId(id);
+
+                // load selected products
+                const itemsRes = await fetch(`/api/order/${id}/items`);
+                if (itemsRes.ok) {
+                    const items = await itemsRes.json();
+                    setSelectedProducts(items.map(i => i.productid));
+                }
+            } catch (err) {
+                console.error('Error loading order for edit:', err);
+                setError('Failed to load order for editing');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadOrder();
+    }, [searchParams]);
 
     const handleProductToggle = (productId) => {
         setSelectedProducts(prev => 
@@ -51,7 +86,28 @@ export default function AddOrderPage() {
         try {
             setError("");
             setSuccess("");
-            
+            if (isUpdate && orderId) {
+                // Update order description
+                const orderRes = await fetch(`/api/order/${orderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderDescription: description }),
+                });
+                if (!orderRes.ok) throw new Error('Order update failed');
+
+                // Replace products for the order (items POST clears and inserts)
+                const itemsRes = await fetch(`/api/order/${orderId}/items`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productIds: selectedProducts }),
+                });
+                if (!itemsRes.ok) throw new Error('Updating order products failed');
+
+                setSuccess('Order updated successfully!');
+                setTimeout(() => router.push('/orders'), 1200);
+                return;
+            }
+
             // Create the order first
             const orderRes = await fetch('/api/order', {
                 method: 'POST',
@@ -60,11 +116,11 @@ export default function AddOrderPage() {
                 },
                 body: JSON.stringify({ orderDescription: description }),
             });
-            
+
             if (!orderRes.ok) {
                 throw new Error(`Order creation failed with status ${orderRes.status}`);
             }
-            
+
             const order = await orderRes.json();
 
             // Add selected products to the order
@@ -76,7 +132,7 @@ export default function AddOrderPage() {
                     },
                     body: JSON.stringify({ productIds: selectedProducts }),
                 });
-                
+
                 if (!itemsRes.ok) {
                     throw new Error(`Adding products failed with status ${itemsRes.status}`);
                 }
@@ -116,8 +172,8 @@ export default function AddOrderPage() {
                         </svg>
                         Back to Orders
                     </Link>
-                    <h1 className="text-4xl font-bold text-gray-900 mb-2">Create New Order</h1>
-                    <p className="text-gray-600">Fill in the details below to create a new order</p>
+                    <h1 className="text-4xl font-bold text-gray-900 mb-2">{isUpdate ? 'Edit Order' : 'Create New Order'}</h1>
+                    <p className="text-gray-600">{isUpdate ? 'Update the order details below' : 'Fill in the details below to create a new order'}</p>
                 </div>
 
                 {/* Main Card */}
@@ -227,7 +283,7 @@ export default function AddOrderPage() {
                                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                                 </svg>
-                                Create Order
+                                {isUpdate ? 'Update Order' : 'Create Order'}
                             </button>
                             <Link
                                 href="/orders"
